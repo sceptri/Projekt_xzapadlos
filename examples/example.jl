@@ -43,6 +43,7 @@ X = vcat(reshape.(solution.u, 1, 3)...)
 Ẋ = vcat(reshape.(derivatives, 1, 3)...)
 
 # ------- Learning from data ---------
+
 basis = PolynomialLibrary(3, 3)
 Ξ = discover(X, Ẋ, basis; λ = 0.025)
 prettyprint(Ξ, basis)
