@@ -1,4 +1,5 @@
 # SINDyAndBeyond.jl (Projekt_xzapadlos)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/sceptri/Projekt_xzapadlos/blob/main/LICENSE)
 Selected methods and algorithms for discovering equations from data.
 
 ## Description
