@@ -2,3 +2,6 @@ name = "SINDyAndBeyond"
 uuid = "4e301093-1166-4250-922c-bc41ba634432"
 authors = ["sceptri <stepan.zapadlo@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
