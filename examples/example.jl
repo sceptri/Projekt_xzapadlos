@@ -33,10 +33,10 @@ solution = solve(ode_problem, Tsit5(); saveat=0.01)
 
 # Compute the derivatives from the data
 derivatives = [[
-	ẋ(x,y,z, Dict(params)[σ]),
-	ẏ(x,y,z, Dict(params)[ρ]),
-	ż(x,y,z, Dict(params)[β])
-] for (x,y,z) in solution.u]
+    ẋ(x, y, z, Dict(params)[σ]),
+    ẏ(x, y, z, Dict(params)[ρ]),
+    ż(x, y, z, Dict(params)[β])
+] for (x, y, z) in solution.u]
 
 # transform vectors of states and derivatives into a matrices
 X = vcat(reshape.(solution.u, 1, 3)...)
@@ -44,6 +44,22 @@ Ẋ = vcat(reshape.(derivatives, 1, 3)...)
 
 # ------- Learning from data ---------
 
-basis = PolynomialLibrary(3, 3)
-Ξ = discover(X, Ẋ, basis; λ = 0.025)
+basis = PolynomialLibrary(2, 3)
+optimizer = LASSO(τ=1e-1, μ=500, ρ=ρ)
+Ξ = discover(X, Ẋ, basis, optimizer; max_iter=100)
 prettyprint(Ξ, basis)
+
+
+# Comparison of different ρs
+ρ_range = 0.01:0.05:1
+L = zeros(3, length(ρ_range))
+
+for (index, ρ) in enumerate(ρ_range)
+    optimizer = LASSO(τ=1e-1, μ=500, ρ=ρ)
+    Ξ = discover(X, Ẋ, basis, optimizer; max_iter=100)
+
+    L[:, index] .= L₂(Ẋ', (basis(X) * Ξ)')
+end
+
+using Plots
+plot(L')
