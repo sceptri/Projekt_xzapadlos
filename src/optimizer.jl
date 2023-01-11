@@ -1,8 +1,10 @@
-using LinearAlgebra
+using LinearAlgebra, Flux, Plots, SciMLSensitivity
 
-export STLSQ, LASSO
+export STLSQ, LASSO, NeuralODE
 
 abstract type Optimizer end
+
+abstract type RegressionOptimizer <: Optimizer end
 
 """
 Optimizer is a functor, which when called, tries to regress the library
@@ -12,13 +14,13 @@ Arguments:
 - Θ is our data transformed by our selected library of candidate functions
 - Ẋ is the derivative in our data
 """
-(::Optimizer)(θ, Ẋ; kwargs...) = nothing
+(::RegressionOptimizer)(θ, Ẋ; kwargs...) = nothing
 
 """
 Fields:
 - τ determines, how small can a value be before being zeroed
 """
-Base.@kwdef struct STLSQ <: Optimizer
+Base.@kwdef struct STLSQ <: RegressionOptimizer
     τ = 0.025
 end
 
@@ -41,7 +43,12 @@ function (optimizer::STLSQ)(Θ, Ẋ; max_iter=10, kwargs...)
     return Ξ
 end
 
-Base.@kwdef struct LASSO <: Optimizer
+"""
+LASSO using ADMM algorithm
+
+Implemented per [the lecture](https://juliateachingctu.github.io/Julia-for-Optimization-and-Learning/stable/lecture_12/sparse/) and [this article](https://www.stat.cmu.edu/~ryantibs/convexopt-F18/lectures/admm.pdf)
+"""
+Base.@kwdef struct LASSO <: RegressionOptimizer
     μ = 500
     ρ = 1e3
     τ = 1e-2
@@ -55,7 +62,7 @@ S(z, η) = max(z - η, 0) - max(-z - η, 0)
 """
 LASSO using ADMM algorithm
 
-Implemnted per [the lecture](https://juliateachingctu.github.io/Julia-for-Optimization-and-Learning/stable/lecture_12/sparse/) and [this article](https://www.stat.cmu.edu/~ryantibs/convexopt-F18/lectures/admm.pdf)
+Implemented per [the lecture](https://juliateachingctu.github.io/Julia-for-Optimization-and-Learning/stable/lecture_12/sparse/) and [this article](https://www.stat.cmu.edu/~ryantibs/convexopt-F18/lectures/admm.pdf)
 """
 function (optimizer::LASSO)(Θ, Ẋ; max_iter=100, kwargs...)
     λ, Q = eigen(Θ' * Θ)
@@ -80,4 +87,45 @@ function (optimizer::LASSO)(Θ, Ẋ; max_iter=100, kwargs...)
     Ξ[small_indices] .= 0
 
     return Ξ
+end
+
+abstract type DiffEqOptimizer <: Optimizer end
+
+Base.@kwdef struct NeuralODE <: DiffEqOptimizer
+    hidden = 5
+    η = 0.1
+end
+
+function (optimizer::NeuralODE)(Θ_problem::T, X, saveat; max_iter=150, kwargs...) where {T<:ODEProblem}
+    parametric_Θ = function (p)
+        p_problem = remake(Θ_problem, p=p[1])
+        return solve(p_problem, Tsit5(), saveat=saveat)
+    end
+
+    Θ_params = Flux.params(Θ_problem.p)
+
+    predict() = parametric_Θ(Θ_params)
+    loss = function ()
+        Y = vcat(reshape.(predict().u, 1, variables(X))...)
+        Y_length = size(Y, 1)
+        return sum(abs2, X[1:Y_length, :] - Y)# + sum(abs, Θ_params[1])
+		# return sum(abs2, 1 .- Y) + sum(abs,Θ_params[1])
+    end
+
+    # we don't really need any input data, as the data is included in the loss function
+    data = Iterators.repeated((), max_iter)
+    optimization_alg = ADAM(optimizer.η)
+
+    cb = function () #callback function to observe training
+        display(loss())
+        # using `remake` to re-create our `prob` with current parameters `p`
+        display(plot(solve(remake(Θ_problem, p=Θ_params[1]), Tsit5(), saveat=saveat); kwargs...))
+    end
+
+    # Display the ODE with the initial parameter values.
+    cb()
+
+    Flux.train!(loss, Θ_params, data, optimization_alg, cb=cb)
+
+    return reshape(Θ_params[1], length(Θ_params[1]) ÷ Int(variables(X)), Int(variables(X)))
 end

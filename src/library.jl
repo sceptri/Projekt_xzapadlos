@@ -1,3 +1,5 @@
+using DifferentialEquations
+
 export MonomialLibrary, PolynomialLibrary, CustomLibrary
 
 abstract type Library end
@@ -7,6 +9,24 @@ function (library::Library)(X; iterate_by=eachrow, kwargs...)
     # therefore `iterate_by(X')` returns all temporal data of each variable per iteration 
     Θ = reshape.([func(X) for func in library], length(iterate_by(X)), 1)
     return hcat(Θ...)
+end
+
+function diffeq_problem(library::T, X, timespan, u₀;
+    p₀=randn(length(library) * variables(X)),
+    kwargs...
+) where {T<:Library}
+    diffeq_function = function(du, u, p, t)
+        for variable in 1:variables(X)
+            uₘ = reshape(u, (1, variables(X))) # u as a 1 row matrix
+            # get only the corresponding parameters for this variable
+            pₙ = p[(variable-1)*length(library)+1:variable*length(library)]
+            du[variable] = sum(pₙ .* [func(uₘ)[1] for func in library])
+        end
+
+		du
+    end
+
+    return ODEProblem(diffeq_function, u₀, timespan, p₀)
 end
 
 abstract type PredefinedLibrary <: Library end
@@ -43,7 +63,7 @@ struct PolynomialLibrary{T<:Integer} <: PredefinedLibrary
 end
 
 """
-I recommend drawing it to really get what's happening.
+I recommend drawing it to really see what's happening.
 
 For 2 variables x, y and polynomial up to 1st order in each variable
 - x stays the same for 2 iterations
